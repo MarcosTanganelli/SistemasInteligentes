@@ -1,6 +1,6 @@
 import numpy as np
 import time
-
+import optuna
 
 def calcular_valor_e_tamanho(lista_itens, valores, tamanhos, tamanho_maximo):
     """
@@ -72,28 +72,28 @@ def tempera_simulada(n_itens, rnd, valores, tamanhos, tamanho_maximo, temp_inici
     """
     # Configuração inicial
     temperatura_atual = temp_inicial
-    lista_itens = np.ones(n_itens, dtype=np.int64)  # Começa com todos os itens incluídos
-    valor_atual, tamanho_atual = calcular_valor_e_tamanho(lista_itens, valores, tamanhos, tamanho_maximo)
+    packing_atual = np.ones(n_itens, dtype=np.int64)  # Começa com todos os itens incluídos
+    valor_atual, tamanho_atual = calcular_valor_e_tamanho(packing_atual, valores, tamanhos, tamanho_maximo)
     
-    print("Mochila Inicial: ", lista_itens)
+    print("Mochila Inicial: ", packing_atual)
 
     iteracao = 0
 
     # Executa enquanto a temperatura for maior que o limite
     while temperatura_atual > 0.00001:
         # Gera uma solução vizinha
-        adj_packing = gerar_solucao_adj(lista_itens, rnd)
+        adj_packing = gerar_solucao_adj(packing_atual, rnd)
         valor_adj, _ = calcular_valor_e_tamanho(adj_packing, valores, tamanhos, tamanho_maximo)
 
         # Se a solução vizinha for melhor, aceita-a
         if valor_adj > valor_atual:
-            lista_itens = adj_packing
+            packing_atual = adj_packing
             valor_atual = valor_adj
         else:
             # Caso contrário, aceita com uma probabilidade baseada na temperatura
             prob_aceitacao = np.exp((valor_adj - valor_atual) / temperatura_atual)
             if rnd.random() < prob_aceitacao:
-                lista_itens = adj_packing
+                packing_atual = adj_packing
                 valor_atual = valor_adj
 
         # Imprime o progresso periodicamente
@@ -105,13 +105,11 @@ def tempera_simulada(n_itens, rnd, valores, tamanhos, tamanho_maximo, temp_inici
 
         iteracao += 1
 
-    return lista_itens
+    return packing_atual
 
-def main():
-    """
-    Função principal para configurar e executar a demonstração de têmpera simulada para o problema da mochila.
-    """
-    # Definindo os valores e tamanhos dos itens
+
+
+def objective(trial):
     valores = np.array([360, 83, 59, 130, 431, 67, 230, 52, 93, 125, 670, 892, 600, 38, 48, 147,
                         78, 256, 63, 17, 120, 164, 432, 35, 92, 110, 22, 42, 50, 323, 514, 28,
                         87, 73, 78, 15, 26, 78, 210, 36, 85, 189, 274, 43, 33, 10, 19, 389, 276,
@@ -121,21 +119,67 @@ def main():
                          3, 86, 66, 31, 65, 0, 79, 20, 65, 52, 13])
     tamanho_maximo = 850
 
-    print("Valores dos itens: ", valores)
-    print("Tamanhos dos itens: ", tamanhos)
+    # Parâmetros a serem otimizados
+    temp_inicial = trial.suggest_float("temp_inicial", 100, 10000)
+    alpha = trial.suggest_float("alpha", 0.9, 0.9999)
+    rnd = np.random.RandomState(seed=int(time.time()))  
 
-    # Parâmetros para a têmpera simulada 
-    rnd = np.random.RandomState(seed=int(time.time()))  # Semente aleatória para reprodutibilidade
-    temp_inicial = 10000.0
-    alpha = 0.9999  # Taxa de resfriamento
+    melhor_packing = tempera_simulada(
+        n_itens=len(valores),
+        rnd=rnd,
+        valores=valores,
+        tamanhos=tamanhos,
+        tamanho_maximo=tamanho_maximo,
+        temp_inicial=temp_inicial,
+        alpha=alpha
+    )
+    melhor_valor, _ = calcular_valor_e_tamanho(melhor_packing, valores, tamanhos, tamanho_maximo)
 
-    print(f"Configurações: temp_inicial = {temp_inicial}, alpha = {alpha}")
-    melhor_packing = tempera_simulada(50, rnd, valores, tamanhos, tamanho_maximo, temp_inicial, alpha)
-    print("----------------------------------")
-    print("Melhor solução encontrada: ", melhor_packing)
-    melhor_valor, melhor_tamanho = calcular_valor_e_tamanho(melhor_packing, valores, tamanhos, tamanho_maximo)
-    print(f"Valor total da melhor embalagem = {melhor_valor:.1f}")
-    print(f"Tamanho total da melhor embalagem = {melhor_tamanho:.1f}")
+    return melhor_valor
+
+def main():
+    print("Otimizando parâmetros com Optuna...")
+    study = optuna.create_study(direction="maximize")
+    study.optimize(objective, n_trials=50)
+
+    print("Melhores parâmetros:")
+    print(study.best_params)
+
+    print("Melhor valor de solução:")
+    print(study.best_value)
+
+
+
+
+# def main():
+#     """
+#     Função principal para configurar e executar a demonstração de têmpera simulada para o problema da mochila.
+#     """
+#     # Definindo os valores e tamanhos dos itens
+#     valores = np.array([360, 83, 59, 130, 431, 67, 230, 52, 93, 125, 670, 892, 600, 38, 48, 147,
+#                         78, 256, 63, 17, 120, 164, 432, 35, 92, 110, 22, 42, 50, 323, 514, 28,
+#                         87, 73, 78, 15, 26, 78, 210, 36, 85, 189, 274, 43, 33, 10, 19, 389, 276,
+#                         312])
+#     tamanhos = np.array([7, 0, 30, 22, 80, 94, 11, 81, 70, 64, 59, 18, 0, 36, 3, 8, 15, 42, 9, 0,
+#                          42, 47, 52, 32, 26, 48, 55, 6, 29, 84, 2, 4, 18, 56, 7, 29, 93, 44, 71,
+#                          3, 86, 66, 31, 65, 0, 79, 20, 65, 52, 13])
+#     tamanho_maximo = 850
+
+#     print("Valores dos itens: ", valores)
+#     print("Tamanhos dos itens: ", tamanhos)
+
+#     # Parâmetros para a têmpera simulada 
+#     rnd = np.random.RandomState(5)  # Semente aleatória para reprodutibilidade
+#     temp_inicial = 10000.0
+#     alpha = 0.8  # Taxa de resfriamento
+
+#     print(f"Configurações: temp_inicial = {temp_inicial}, alpha = {alpha}")
+#     melhor_packing = tempera_simulada(50, rnd, valores, tamanhos, tamanho_maximo, temp_inicial, alpha)
+#     print("----------------------------------")
+#     print("Melhor solução encontrada: ", melhor_packing)
+#     melhor_valor, melhor_tamanho = calcular_valor_e_tamanho(melhor_packing, valores, tamanhos, tamanho_maximo)
+#     print(f"Valor total da melhor embalagem = {melhor_valor:.1f}")
+#     print(f"Tamanho total da melhor embalagem = {melhor_tamanho:.1f}")
 
 if __name__ == "__main__":
     main()
